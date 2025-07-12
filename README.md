@@ -8,4 +8,4 @@ Para ejecutar el prototipo localmente, se deben instalar las siguientes dependen
 ```bash
 pip install flask langchain langchain-community langchain_google_genai langchain-openai
 ```
-
+Coloca dentro del Archivo Key.py tu API key de Gemini
