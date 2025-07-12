@@ -4,6 +4,8 @@ En el presente informe, se detallan los avances en el refinamiento de las fuente
 
 ## Requisitos de Instalación
 Para ejecutar el prototipo localmente, se deben instalar las siguientes dependencias:
-pip install flask langchain langchain-community langchain-openai
 
+```bash
+pip install flask langchain langchain-community langchain_google_genai
+```
 
