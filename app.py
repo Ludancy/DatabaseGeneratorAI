@@ -56,7 +56,7 @@ answer_prompt = PromptTemplate.from_template(
     3. Formula una respuesta clara y concisa utilizando ÚNICAMENTE los datos obtenidos de la consulta SQL.
     4. Si la consulta SQL no devuelve datos o no es relevante para la pregunta, responde que no puedes encontrar la información o que necesitas más detalles.
     5. Siempre devuelve la respuesta en español.
-    6. NO incluyas la consulta SQL en la respuesta final, a menos que se te pida explícally.
+    6. NO incluyas la consulta SQL en la respuesta final, a menos que se te pida explícitamente.
     7. NO incluyas explicaciones sobre cómo se obtuvo la información, solo la respuesta directa.
 
     Pregunta del usuario: {question}
@@ -67,9 +67,9 @@ answer_prompt = PromptTemplate.from_template(
 
 answer = answer_prompt | llm | StrOutputParser()
 
-# --- Custom function to strip markdown code block fences ---
-def strip_sql_markdown(sql_query: str) -> str:
-    # Remove markdown code block fences (```sql and ```)
+# --- Custom function to clean and extract the first SQL query ---
+def clean_sql_query(sql_query: str) -> str:
+    # 1. Remove markdown code block fences (```sql and ```)
     sql_query = sql_query.strip()
     if sql_query.startswith("```sql"):
         sql_query = sql_query[len("```sql"):].strip()
@@ -77,7 +77,17 @@ def strip_sql_markdown(sql_query: str) -> str:
         sql_query = sql_query[len("```"):].strip()
     if sql_query.endswith("```"):
         sql_query = sql_query[:-len("```")].strip()
-    return sql_query
+
+    # 2. Remove "SQLQuery: " prefix
+    if sql_query.lower().startswith("sqlquery:"):
+        sql_query = sql_query[len("sqlquery:"):].strip()
+
+    # 3. Split by semicolon and take the first non-empty statement
+    # This handles cases where LLM generates multiple statements
+    statements = [stmt.strip() for stmt in sql_query.split(';') if stmt.strip()]
+    if statements:
+        return statements[0] # Return only the first statement
+    return "" # Return empty string if no valid statements found
 
 # --- Custom functions to print intermediate steps for debugging ---
 def log_intermediate_steps(data):
@@ -86,30 +96,29 @@ def log_intermediate_steps(data):
     print(f"Generated SQL: {data['query']}")
     return data
 
-def log_stripped_sql(data):
-    print("\n--- Stripped SQL Query (Before Execution) ---")
-    print(f"Stripped SQL: {data['stripped_query']}")
+def log_cleaned_sql(data): # Renamed function
+    print("\n--- Cleaned SQL Query (Before Execution) ---")
+    print(f"Cleaned SQL: {data['cleaned_query']}")
     return data
 
 def log_final_result(data):
     print("\n--- SQL Execution Result ---")
     print(f"Question: {data['question']}")
-    print(f"Generated SQL: {data['query']}") # This is the original, unstripped query
+    print(f"Generated SQL: {data['query']}") # This is the original, uncleaned query
     print(f"SQL Result: {data['result']}")
     return data
 # --- End of custom functions ---
 
 
 chain = (
-    RunnablePassthrough.assign(query=write_query) # LLM writes the query (with markdown)
+    RunnablePassthrough.assign(query=write_query) # LLM writes the query (raw)
     .assign(temp_data=log_intermediate_steps) # Log the raw generated SQL
     .assign(
-        # CORRECTED: Use RunnableLambda to apply strip_sql_markdown to the 'query' key's value
-        stripped_query=RunnableLambda(lambda x: strip_sql_markdown(x["query"]))
+        cleaned_query=RunnableLambda(lambda x: clean_sql_query(x["query"])) # Clean and extract first statement
     )
-    .assign(temp_data_stripped=log_stripped_sql) # Log the stripped SQL
+    .assign(temp_data_cleaned=log_cleaned_sql) # Log the cleaned SQL
     .assign(
-        result=itemgetter("stripped_query") | execute_query # Execute the stripped query
+        result=itemgetter("cleaned_query") | execute_query # Execute the cleaned query
     )
     .assign(temp_data_2=log_final_result) # Log the SQL result
     | answer
